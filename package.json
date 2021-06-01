@@ -32,8 +32,10 @@
     "precommit": "lint-staged"
   },
   "lint-staged": {
-    "*.js": "eslint --cache --fix",
-    "*.{js,md}": "prettier --write"
+    "{scripts,test}/**/*.ts": [
+      "eslint --cache --fix",
+      "prettier --write"
+    ]
   },
   "repository": {
     "type": "git",
