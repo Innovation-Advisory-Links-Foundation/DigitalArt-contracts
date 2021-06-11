@@ -19,5 +19,5 @@
     "forceConsistentCasingInFileNames": true        /* Disallow inconsistently-cased references to the same file. */
   },
   "include": ["./scripts", "./test"],
-  "files": ["./hardhat.config.js"]
+  "files": ["hardhat.config.ts"]
 }
