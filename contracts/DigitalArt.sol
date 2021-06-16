@@ -25,8 +25,6 @@ contract DigitalArt is ERC721URIStorage {
         string uri; // An IPFS URI referencing a file containing the token metadata.
         address payable artist; // Who created the NFT.
         address payable owner; // Who owns the NFT.
-        bool onSale; // True when the NFT can be bought from the marketplace.
-        bool licensable; // True when someone can buy a time-based license for temporary usage.
     }
 
     struct License {
@@ -43,7 +41,7 @@ contract DigitalArt is ERC721URIStorage {
     mapping(uint256 => License[]) public tokenToLicenses;
 
     ///@dev Return the NFT having the provided identifier.
-    mapping(uint256 => NFT) public _idToNFT;
+    mapping(uint256 => NFT) public idToNFT;
 
     ///@dev Private counter for NFT identifiers.
     Counters.Counter private _tokenIds;
@@ -65,28 +63,16 @@ contract DigitalArt is ERC721URIStorage {
      * @param _tokenURI <string> - An IPFS URI referencing a file containing the token metadata.
      * @param _sellingPrice <uint256> - Selling price in wei (1 ETH == 10^18 wei).
      * @param _dailyLicensePrice <uint256> - Daily license price in wei (1 ETH == 10^18 wei).
-     * @param _onSale <bool> - True when the NFT can be bought from the marketplace.
-     * @param _licensable <bool> - True when someone can buy a time-based license for temporary usage.
      * @return _newTokenId <uint256> - Unique identifier of the NFT.
      */
     function safeMint(
         string memory _tokenURI,
         uint256 _sellingPrice,
-        uint256 _dailyLicensePrice,
-        bool _onSale,
-        bool _licensable
+        uint256 _dailyLicensePrice
     ) external returns (uint256 _newTokenId) {
         require(_uriToId[_tokenURI] == 0, "ALREADY-MINTED");
-        require(
-            (_sellingPrice == 0 wei && _onSale == false) ||
-                (_sellingPrice > 0 wei && _onSale == true),
-            "INVALID-SELLING-PRICE"
-        );
-        require(
-            (_dailyLicensePrice == 0 wei && _licensable == false) ||
-                (_dailyLicensePrice > 0 wei && _licensable == true),
-            "INVALID-LICENSE-PRICE"
-        );
+        require(_sellingPrice > 0 wei, "INVALID-SELLING-PRICE");
+        require(_dailyLicensePrice > 0 wei, "INVALID-LICENSE-PRICE");
 
         // Mint a new token.
         _tokenIds.increment();
@@ -102,15 +88,13 @@ contract DigitalArt is ERC721URIStorage {
                 _dailyLicensePrice,
                 _tokenURI,
                 payable(msg.sender),
-                payable(msg.sender),
-                _onSale,
-                _licensable
+                payable(msg.sender)
             );
 
         // Storage update.
+        idToNFT[newTokenId] = nft;
         _ownerToIds[msg.sender].push(newTokenId);
         _uriToId[_tokenURI] = newTokenId;
-        _idToNFT[newTokenId] = nft;
 
         return newTokenId;
     }
