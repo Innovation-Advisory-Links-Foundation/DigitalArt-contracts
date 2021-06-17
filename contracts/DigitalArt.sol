@@ -25,6 +25,18 @@ contract DigitalArt is ERC721URIStorage {
 
     event PaymentExecuted(address payable to, uint256 amount);
 
+    event SellingPriceUpdated(
+        uint256 tokenId,
+        uint256 oldSellingPrice,
+        uint256 newSellingPrice
+    );
+
+    event DailyLicensePriceUpdated(
+        uint256 tokenId,
+        uint256 oldDailyLicensePrice,
+        uint256 newDailyLicensePrice
+    );
+
     /** CUSTOM TYPES */
 
     struct NFT {
@@ -153,6 +165,68 @@ contract DigitalArt is ERC721URIStorage {
         nft.owner = payable(msg.sender);
         nft.sellingPrice = 0 wei;
         nft.dailyLicensePrice = 0 wei;
+        idToNFT[_tokenId] = nft;
+    }
+
+    /**
+     * @notice Update the NFT selling price.
+     * @dev If the new selling price is equal to zero, the token must be considered NOT on sale, otherwise on sale.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     * @param _newSellingPrice <uint256> - New selling price for the NFT.
+     */
+    function updateSellingPrice(uint256 _tokenId, uint256 _newSellingPrice)
+        external
+    {
+        NFT memory nft = idToNFT[_tokenId];
+        require(
+            _tokenId <= _tokenIds.current() && nft.id == _tokenId,
+            "INVALID-TOKEN-ID"
+        );
+        require(nft.owner == msg.sender, "NOT-OWNER");
+        require(nft.sellingPrice != _newSellingPrice, "SAME-PRICE");
+
+        // Emit event.
+        emit SellingPriceUpdated(_tokenId, nft.sellingPrice, _newSellingPrice);
+
+        // Approve DigitalArt contract at the first update of the price.
+        if (getApproved(_tokenId) == address(0x0))
+            approve(address(this), _tokenId);
+
+        // Disapprove the DigitalArt contract when the owner decides to retire the NFT from the marketplace.
+        if (_newSellingPrice == 0) approve(address(0x0), _tokenId);
+
+        // Storage update.
+        nft.sellingPrice = _newSellingPrice;
+        idToNFT[_tokenId] = nft;
+    }
+
+    /**
+     * @notice Update the NFT daily license price.
+     * @dev If the new daily license price is equal to zero, the token must be considered NOT licensable, otherwise licensable.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     * @param _newDailyLicensePrice <uint256> - New selling price for the NFT.
+     */
+    function updateDailyLicensePrice(
+        uint256 _tokenId,
+        uint256 _newDailyLicensePrice
+    ) external {
+        NFT memory nft = idToNFT[_tokenId];
+        require(
+            _tokenId <= _tokenIds.current() && nft.id == _tokenId,
+            "INVALID-TOKEN-ID"
+        );
+        require(nft.owner == msg.sender, "NOT-OWNER");
+        require(nft.dailyLicensePrice != _newDailyLicensePrice, "SAME-PRICE");
+
+        // Emit event.
+        emit DailyLicensePriceUpdated(
+            _tokenId,
+            nft.dailyLicensePrice,
+            _newDailyLicensePrice
+        );
+
+        // Storage update.
+        nft.dailyLicensePrice = _newDailyLicensePrice;
         idToNFT[_tokenId] = nft;
     }
 
