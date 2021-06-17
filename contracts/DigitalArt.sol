@@ -16,6 +16,14 @@ contract DigitalArt is ERC721URIStorage {
     using EnumerableSet for EnumerableSet.UintSet;
 
     /** EVENTS */
+    event TokenPurchased(
+        uint256 tokenId,
+        address oldOwner,
+        address newOwner,
+        uint256 price
+    );
+
+    event PaymentExecuted(address payable to, uint256 amount);
 
     /** CUSTOM TYPES */
 
@@ -101,7 +109,64 @@ contract DigitalArt is ERC721URIStorage {
         _ownerToIds[msg.sender].add(newTokenId);
         _uriToId[_tokenURI] = newTokenId;
 
+        // Approve DigitalArt contract to move this token.
+        approve(address(this), newTokenId);
+
         return newTokenId;
+    }
+
+    /**
+     * @notice A safe method for purchasing an NFT on sale.
+     * @dev Stores on-chain the URI for the token metadata.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     */
+    function purchaseNFT(uint256 _tokenId) external payable {
+        NFT memory nft = idToNFT[_tokenId];
+        require(
+            _tokenId <= _tokenIds.current() && nft.id == _tokenId,
+            "INVALID-TOKEN-ID"
+        );
+        require(nft.owner != msg.sender, "ALREADY-OWNER");
+        require(nft.sellingPrice > 0, "NOT-FOR-SALE");
+        require(nft.sellingPrice <= msg.value, "INVALID-PAYMENT");
+
+        // Royalty redistribution.
+        uint256 artistAmount =
+            (nft.sellingPrice / 100) * artistResellingRoyalty;
+        uint256 ownerAmount = nft.sellingPrice - artistAmount;
+
+        // Enumerable UintSet update.
+        require(_ownerToIds[msg.sender].add(nft.id), "DUPLICATE-ID");
+        require(_ownerToIds[nft.owner].remove(nft.id), "NOT-REMOVED-ID");
+
+        // Emit event.
+        emit TokenPurchased(_tokenId, nft.owner, msg.sender, msg.value);
+
+        // Token ownership transfer.
+        this.safeTransferFrom(nft.owner, msg.sender, nft.id);
+
+        // Payment.
+        _pay(nft.artist, artistAmount);
+        _pay(nft.owner, ownerAmount);
+
+        // Storage update.
+        nft.owner = payable(msg.sender);
+        nft.sellingPrice = 0 wei;
+        nft.dailyLicensePrice = 0 wei;
+        idToNFT[_tokenId] = nft;
+    }
+
+    /**
+     * @notice Send a certain amount of ethers (in wei) from the sender to the recipient.
+     * @param _to <address> - Recipient address.
+     * @param _amount <uint256> - Amount to be sent (in wei).
+     */
+    function _pay(address payable _to, uint256 _amount) internal {
+        // Emit event.
+        emit PaymentExecuted(_to, _amount);
+
+        // Execute payment.
+        require(_to.send(_amount), "PAYMENT-ERROR");
     }
 
     /**
