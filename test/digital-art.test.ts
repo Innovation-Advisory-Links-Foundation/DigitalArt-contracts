@@ -82,8 +82,11 @@ describe("*** DigitalArt ***", () => {
         artist.address
       )
       expect(
-        await digitalArtIstance.getAllTokenIds(artist.address)
-      ).to.be.deep.equal([tokenId])
+        await digitalArtIstance.getNumberOfTokensForOwner(artist.address)
+      ).to.be.deep.equal(tokenId)
+      expect(
+        await digitalArtIstance.getIdFromIndexForOwner(artist.address, 0)
+      ).to.be.deep.equal(tokenId)
       expect(await digitalArtIstance.tokenURI(tokenId)).to.be.equal(tokenURI)
     })
 
