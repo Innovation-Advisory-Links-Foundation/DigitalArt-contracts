@@ -3,6 +3,7 @@
 pragma solidity >=0.7.6 <0.9.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
 /**
@@ -12,14 +13,14 @@ import "@openzeppelin/contracts/utils/Counters.sol";
  */
 contract DigitalArt is ERC721URIStorage {
     using Counters for Counters.Counter;
+    using EnumerableSet for EnumerableSet.UintSet;
 
     /** EVENTS */
-    // Price change when reselling.
 
     /** CUSTOM TYPES */
 
     struct NFT {
-        uint256 id; // Token unique identifier.
+        uint256 id; // NFT unique identifier.
         uint256 sellingPrice; // Selling price in wei (1 ETH == 10^18 wei).
         uint256 dailyLicensePrice; // Daily license price in wei (1 ETH == 10^18 wei).
         string uri; // An IPFS URI referencing a file containing the token metadata.
@@ -36,9 +37,11 @@ contract DigitalArt is ERC721URIStorage {
     }
 
     /** STORAGE */
+    ///@dev Percentage of value redistribution for each NFT sale.
+    uint256 public artistResellingRoyalty = 7;
 
     ///@dev Return the licenses belonging to the corresponding NFT.
-    mapping(uint256 => License[]) public tokenToLicenses;
+    mapping(uint256 => License[]) public idToLicenses;
 
     ///@dev Return the NFT having the provided identifier.
     mapping(uint256 => NFT) public idToNFT;
@@ -50,10 +53,12 @@ contract DigitalArt is ERC721URIStorage {
     mapping(string => uint256) private _uriToId;
 
     ///@dev Return the token ids (NFTs) belonging to the corresponding address.
-    mapping(address => uint256[]) private _ownerToIds;
+    mapping(address => EnumerableSet.UintSet) private _ownerToIds;
 
     ///@dev Return the licenses belonging to the corresponding address.
     mapping(address => License[]) private _userToLicenses;
+
+    /** METHODS */
 
     constructor() ERC721("DigitalArt", "DAT") {}
 
@@ -93,23 +98,37 @@ contract DigitalArt is ERC721URIStorage {
 
         // Storage update.
         idToNFT[newTokenId] = nft;
-        _ownerToIds[msg.sender].push(newTokenId);
+        _ownerToIds[msg.sender].add(newTokenId);
         _uriToId[_tokenURI] = newTokenId;
 
         return newTokenId;
     }
 
     /**
-     * @notice Return the NFT ids owned by the address.
+     * @notice Return the number of NFTs owned by the address.
      * @param _owner <address> - Address of the NFTs owner.
-     * @return _ids <uint256[]> - Unique identifiers of the NFTs owned by the address.
+     * @return _total <uint256[]> - Number of the NFTs owned by the address.
      */
-    function getAllTokenIds(address _owner)
+    function getNumberOfTokensForOwner(address _owner)
         external
         view
-        returns (uint256[] memory _ids)
+        returns (uint256 _total)
     {
-        return _ownerToIds[_owner];
+        return _ownerToIds[_owner].length();
+    }
+
+    /**
+     * @notice Return the NFT identifier owned by the address which is stored at a given index.
+     * @param _owner <address> - Address of the NFTs owner.
+     * @param _idx <uint256> - Index where to lookup the value.
+     * @return _id <uint256> - NFT unique identifier stored at the given index location.
+     */
+    function getIdFromIndexForOwner(address _owner, uint256 _idx)
+        external
+        view
+        returns (uint256 _id)
+    {
+        return _ownerToIds[_owner].at(_idx);
     }
 
     /**
