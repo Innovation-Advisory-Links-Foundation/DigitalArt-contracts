@@ -245,7 +245,7 @@ contract DigitalArt is ERC721URIStorage {
             "INVALID-TOKEN-ID"
         );
         require(nft.owner == msg.sender, "NOT-OWNER");
-        require(nft.sellingPrice != _newSellingPrice, "SAME-PRICE");
+        require((nft.sellingPrice == 0 && _newSellingPrice > 0) || (nft.sellingPrice > 0 && _newSellingPrice >= 0), "INVALID-SELLING-UPDATE");
 
         // Emit event.
         emit SellingPriceUpdated(_tokenId, nft.sellingPrice, _newSellingPrice);
@@ -278,7 +278,7 @@ contract DigitalArt is ERC721URIStorage {
             "INVALID-TOKEN-ID"
         );
         require(nft.owner == msg.sender, "NOT-OWNER");
-        require(nft.dailyLicensePrice != _newDailyLicensePrice, "SAME-PRICE");
+        require((nft.dailyLicensePrice == 0 && _newDailyLicensePrice > 0) || (nft.dailyLicensePrice > 0 && _newDailyLicensePrice == 0), "INVALID-LICENSABLE-UPDATE");
 
         // Emit event.
         emit DailyLicensePriceUpdated(
