@@ -1,23 +1,8 @@
 import { config } from "./package.json"
-import { task, types, HardhatUserConfig } from "hardhat/config"
+import { HardhatUserConfig } from "hardhat/config"
 
 import "@nomiclabs/hardhat-waffle"
 import "@nomiclabs/hardhat-ethers"
-
-// https://hardhat.org/guides/create-task.html
-
-task("deploy", "Deploy a contract instance")
-    .addOptionalParam("contract", "The name of the contract", "DigitalArt", types.string)
-    .setAction(async (args, hre) => {
-        const { contract } = args
-        
-        const ContractFactory = await hre.ethers.getContractFactory(contract)
-        const instance = await ContractFactory.deploy()
-
-        console.log(`Contract ${contract} deployed to: ${instance.address}`)
-
-        return instance
-    })
 
 // https://hardhat.org/config/
 const hardhatConfig: HardhatUserConfig = {
@@ -32,7 +17,7 @@ const hardhatConfig: HardhatUserConfig = {
     networks: {
         local: {
             url: "http://127.0.0.1:8545",
-            gasPrice: 3000000
+            gasPrice: 300000
         }
     }
 }
