@@ -25,6 +25,14 @@ contract DigitalArt is ERC721URIStorage {
 
     event PaymentExecuted(address payable to, uint256 amount);
 
+    event LicensePurchased(
+        uint256 tokenId,
+        uint256 durationInDays,
+        uint256 price,
+        uint256 endDateInMillis,
+        address payable sender
+    );
+
     event SellingPriceUpdated(
         uint256 tokenId,
         uint256 oldSellingPrice,
@@ -59,6 +67,9 @@ contract DigitalArt is ERC721URIStorage {
     /** STORAGE */
     ///@dev Percentage of value redistribution for each NFT sale.
     uint256 public artistResellingRoyalty = 7;
+
+    ///@dev Percentage of value redistribution for each license associated to the NFT.
+    uint256 public artistLicenseRoyalty = 3;
 
     ///@dev Return the licenses belonging to the corresponding NFT.
     mapping(uint256 => License[]) public idToLicenses;
@@ -169,6 +180,57 @@ contract DigitalArt is ERC721URIStorage {
     }
 
     /**
+     * @notice A method for purchasing a license of time-based usage for a licensable NFT.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     * @param _days <uint256> - Duration (in days) of the time-based license usage.
+     */
+    function purchaseLicense(uint256 _tokenId, uint256 _days) external payable {
+        NFT memory nft = idToNFT[_tokenId];
+        require(
+            _tokenId <= _tokenIds.current() && nft.id == _tokenId,
+            "INVALID-TOKEN-ID"
+        );
+        require(nft.owner != msg.sender, "ALREADY-OWNER");
+        require(nft.dailyLicensePrice > 0, "NOT-LICENSABLE");
+        require(_days > 0, "INVALID-DURATION");
+        require(nft.dailyLicensePrice * _days <= msg.value, "INVALID-PAYMENT");
+
+        // Check if the sender has already a valid license on the provided NFT.
+        checkLicenseValidityForLicensee(msg.sender, _tokenId);
+
+        // Royalty redistribution.
+        uint256 artistAmount =
+            ((nft.dailyLicensePrice * _days) / 100) * artistLicenseRoyalty;
+        uint256 ownerAmount = (nft.dailyLicensePrice * _days) - artistAmount;
+
+        // Payment.
+        _pay(nft.artist, artistAmount);
+        _pay(nft.owner, ownerAmount);
+
+        // Storage update.
+        uint256 daysInMillis = _days * 86400000;
+        License memory license =
+            License(
+                _tokenId,
+                block.timestamp * 1000,
+                (block.timestamp * 1000) + daysInMillis,
+                msg.value,
+                msg.sender
+            );
+        _userToLicenses[msg.sender].push(license);
+        idToLicenses[_tokenId].push(license);
+
+        // Emit event.
+        emit LicensePurchased(
+            _tokenId,
+            _days,
+            msg.value,
+            (block.timestamp * 1000) + daysInMillis,
+            payable(msg.sender)
+        );
+    }
+
+    /**
      * @notice Update the NFT selling price.
      * @dev If the new selling price is equal to zero, the token must be considered NOT on sale, otherwise on sale.
      * @param _tokenId <uint256> - NFT unique identifier.
@@ -272,14 +334,47 @@ contract DigitalArt is ERC721URIStorage {
 
     /**
      * @notice Return the licenses owned by the address.
-     * @param _owner <address> - Address of the licenses owner.
+     * @param _licensee <address> - Who bought the license.
      * @return _licenses <License[]> - Unique identifiers of the licenses owned by the address.
      */
-    function getAllLicenses(address _owner)
+    function getAllLicensesForLicensee(address _licensee)
         external
         view
         returns (License[] memory _licenses)
     {
-        return _userToLicenses[_owner];
+        return _userToLicenses[_licensee];
+    }
+
+    /**
+     * @notice Return the licenses owned by the address.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     * @return _licenses <License[]> - Licenses on the given NFT.
+     */
+    function getAllLicensesForToken(uint256 _tokenId)
+        external
+        view
+        returns (License[] memory _licenses)
+    {
+        return idToLicenses[_tokenId];
+    }
+
+    /**
+     * @notice Check if the licensee has already a valid license on the provided NFT.
+     * @param _licensee <address> - Who bought the license.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     */
+    function checkLicenseValidityForLicensee(
+        address _licensee,
+        uint256 _tokenId
+    ) internal view {
+        License[] memory licensesOnToken =
+            this.getAllLicensesForToken(_tokenId);
+        for (uint256 i = 0; i < licensesOnToken.length; i++)
+            require(
+                (licensesOnToken[i].recipient == _licensee &&
+                    licensesOnToken[i].end < block.timestamp) ||
+                    (licensesOnToken[i].recipient != _licensee),
+                "ALREADY-LICENSED"
+            );
     }
 }
