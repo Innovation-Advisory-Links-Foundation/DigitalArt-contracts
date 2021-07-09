@@ -16,6 +16,14 @@ contract DigitalArt is ERC721URIStorage {
     using EnumerableSet for EnumerableSet.UintSet;
 
     /** EVENTS */
+    event TokenMinted(
+        uint256 tokenId,
+        uint256 sellingPrice,
+        uint256 dailyLicensePrice,
+        string tokenURI,
+        address owner
+    );
+
     event TokenPurchased(
         uint256 tokenId,
         address oldOwner,
@@ -117,15 +125,14 @@ contract DigitalArt is ERC721URIStorage {
         _setTokenURI(newTokenId, _tokenURI);
 
         // NFT store.
-        NFT memory nft =
-            NFT(
-                newTokenId,
-                _sellingPrice,
-                _dailyLicensePrice,
-                _tokenURI,
-                payable(msg.sender),
-                payable(msg.sender)
-            );
+        NFT memory nft = NFT(
+            newTokenId,
+            _sellingPrice,
+            _dailyLicensePrice,
+            _tokenURI,
+            payable(msg.sender),
+            payable(msg.sender)
+        );
 
         // Storage update.
         idToNFT[newTokenId] = nft;
@@ -134,6 +141,15 @@ contract DigitalArt is ERC721URIStorage {
 
         // Approve DigitalArt contract to move this token.
         approve(address(this), newTokenId);
+
+        // Emit event.
+        emit TokenMinted(
+            newTokenId,
+            _sellingPrice,
+            _dailyLicensePrice,
+            _tokenURI,
+            msg.sender
+        );
 
         return newTokenId;
     }
@@ -154,8 +170,8 @@ contract DigitalArt is ERC721URIStorage {
         require(nft.sellingPrice <= msg.value, "INVALID-PAYMENT");
 
         // Royalty redistribution.
-        uint256 artistAmount =
-            (nft.sellingPrice / 100) * artistResellingRoyalty;
+        uint256 artistAmount = (nft.sellingPrice / 100) *
+            artistResellingRoyalty;
         uint256 ownerAmount = nft.sellingPrice - artistAmount;
 
         // Enumerable UintSet update.
@@ -199,8 +215,8 @@ contract DigitalArt is ERC721URIStorage {
         checkLicenseValidityForLicensee(msg.sender, _tokenId);
 
         // Royalty redistribution.
-        uint256 artistAmount =
-            ((nft.dailyLicensePrice * _days) / 100) * artistLicenseRoyalty;
+        uint256 artistAmount = ((nft.dailyLicensePrice * _days) / 100) *
+            artistLicenseRoyalty;
         uint256 ownerAmount = (nft.dailyLicensePrice * _days) - artistAmount;
 
         // Payment.
@@ -209,14 +225,13 @@ contract DigitalArt is ERC721URIStorage {
 
         // Storage update.
         uint256 daysInMillis = _days * 86400000;
-        License memory license =
-            License(
-                _tokenId,
-                block.timestamp * 1000,
-                (block.timestamp * 1000) + daysInMillis,
-                msg.value,
-                msg.sender
-            );
+        License memory license = License(
+            _tokenId,
+            block.timestamp * 1000,
+            (block.timestamp * 1000) + daysInMillis,
+            msg.value,
+            msg.sender
+        );
         _userToLicenses[msg.sender].push(license);
         idToLicenses[_tokenId].push(license);
 
@@ -245,7 +260,11 @@ contract DigitalArt is ERC721URIStorage {
             "INVALID-TOKEN-ID"
         );
         require(nft.owner == msg.sender, "NOT-OWNER");
-        require((nft.sellingPrice == 0 && _newSellingPrice > 0) || (nft.sellingPrice > 0 && _newSellingPrice >= 0), "INVALID-SELLING-UPDATE");
+        require(
+            (nft.sellingPrice == 0 && _newSellingPrice > 0) ||
+                (nft.sellingPrice > 0 && _newSellingPrice >= 0),
+            "INVALID-SELLING-UPDATE"
+        );
 
         // Emit event.
         emit SellingPriceUpdated(_tokenId, nft.sellingPrice, _newSellingPrice);
@@ -278,7 +297,11 @@ contract DigitalArt is ERC721URIStorage {
             "INVALID-TOKEN-ID"
         );
         require(nft.owner == msg.sender, "NOT-OWNER");
-        require((nft.dailyLicensePrice == 0 && _newDailyLicensePrice > 0) || (nft.dailyLicensePrice > 0 && _newDailyLicensePrice == 0), "INVALID-LICENSABLE-UPDATE");
+        require(
+            (nft.dailyLicensePrice == 0 && _newDailyLicensePrice > 0) ||
+                (nft.dailyLicensePrice > 0 && _newDailyLicensePrice == 0),
+            "INVALID-LICENSABLE-UPDATE"
+        );
 
         // Emit event.
         emit DailyLicensePriceUpdated(
@@ -367,8 +390,9 @@ contract DigitalArt is ERC721URIStorage {
         address _licensee,
         uint256 _tokenId
     ) internal view {
-        License[] memory licensesOnToken =
-            this.getAllLicensesForToken(_tokenId);
+        License[] memory licensesOnToken = this.getAllLicensesForToken(
+            _tokenId
+        );
         for (uint256 i = 0; i < licensesOnToken.length; i++)
             require(
                 (licensesOnToken[i].recipient == _licensee &&

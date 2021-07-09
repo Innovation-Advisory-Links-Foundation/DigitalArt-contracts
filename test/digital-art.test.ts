@@ -63,12 +63,30 @@ describe("*** DigitalArt ***", () => {
 
       // Wait until the tx is mined to get back the events.
       const { events } = await tx.wait()
-      const { from, to, tokenId } = events[0].args
+      const [Transfer, Approval, TokenMinted] = events
 
       // Event checks.
-      expect(Number(from)).to.be.equal(0)
-      expect(to).to.be.equal(artist.address)
-      expect(Number(tokenId.toString())).to.be.equal(expectedTokenId)
+      expect(Number(Transfer.args.from)).to.be.equal(0)
+      expect(Transfer.args.to).to.be.equal(artist.address)
+      expect(Number(Transfer.args.tokenId.toString())).to.be.equal(
+        expectedTokenId
+      )
+
+      expect(Approval.args.owner).to.be.equal(artist.address)
+      expect(Approval.args.approved).to.be.equal(digitalArtIstance.address)
+      expect(Number(Approval.args.tokenId)).to.be.equal(expectedTokenId)
+
+      expect(Number(TokenMinted.args.tokenId.toString())).to.be.equal(
+        expectedTokenId
+      )
+      expect(Number(TokenMinted.args.sellingPrice.toString())).to.be.equal(
+        sellingPrice
+      )
+      expect(Number(TokenMinted.args.dailyLicensePrice.toString())).to.be.equal(
+        dailyLicensePrice
+      )
+      expect(TokenMinted.args.tokenURI).to.be.equal(tokenURI)
+      expect(TokenMinted.args.owner).to.be.equal(artist.address)
 
       // Storage checks.
       const nft = await digitalArtIstance.idToNFT(expectedTokenId)
@@ -88,11 +106,13 @@ describe("*** DigitalArt ***", () => {
       )
       expect(
         await digitalArtIstance.getNumberOfTokensForOwner(artist.address)
-      ).to.be.equal(tokenId)
+      ).to.be.equal(Transfer.args.tokenId)
       expect(
         await digitalArtIstance.getIdFromIndexForOwner(artist.address, 0)
-      ).to.be.equal(tokenId)
-      expect(await digitalArtIstance.tokenURI(tokenId)).to.be.equal(tokenURI)
+      ).to.be.equal(Transfer.args.tokenId)
+      expect(
+        await digitalArtIstance.tokenURI(Transfer.args.tokenId)
+      ).to.be.equal(tokenURI)
     })
 
     it("Should not be possible to mint a token with the same IPFS CID twice", async () => {
