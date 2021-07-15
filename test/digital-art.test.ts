@@ -158,11 +158,12 @@ describe("*** DigitalArt ***", () => {
       const collectorBalanceBefore = ethers.utils.formatEther(
         await ethers.provider.getBalance(collectorA.address)
       )
+      const timestamp = Date.now()
 
       // Send tx.
       const tx = await digitalArtIstance
         .connect(collectorA)
-        .purchaseNFT(tokenId, { value: price })
+        .purchaseNFT(tokenId, timestamp, { value: price })
 
       // Wait until the tx is mined to get back the events.
       const { events } = await tx.wait()
@@ -184,6 +185,7 @@ describe("*** DigitalArt ***", () => {
       expect(TokenPurchased.args["oldOwner"]).to.be.equal(artist.address)
       expect(TokenPurchased.args["newOwner"]).to.be.equal(collectorA.address)
       expect(Number(TokenPurchased.args["price"])).to.be.equal(price)
+      expect(Number(TokenPurchased.args["timestamp"])).to.be.equal(timestamp)
       // Approval.
       expect(Approval.args["owner"]).to.be.equal(artist.address)
       expect(Number(Approval.args["approved"])).to.be.equal(0)
@@ -312,10 +314,12 @@ describe("*** DigitalArt ***", () => {
     })
 
     it("Should be possible to re-purchase the NFT", async () => {
+      const timestamp = Date.now()
+
       // Send tx.
       const tx = await digitalArtIstance
         .connect(collectorB)
-        .purchaseNFT(tokenId, { value: newSellingPrice })
+        .purchaseNFT(tokenId, timestamp, { value: newSellingPrice })
 
       // Storage checks.
       const nft = await digitalArtIstance.idToNFT(tokenId)
@@ -408,10 +412,12 @@ describe("*** DigitalArt ***", () => {
         await ethers.provider.getBalance(collectorB.address)
       )
 
+      const timestamp = Date.now()
+
       // Send tx.
       const tx = await digitalArtIstance
         .connect(collectorC)
-        .purchaseLicense(tokenId, days, { value: price })
+        .purchaseLicense(tokenId, days, timestamp, { value: price })
 
       // Wait until the tx is mined to get back the events.
       const { events } = await tx.wait()
@@ -442,6 +448,7 @@ describe("*** DigitalArt ***", () => {
       expect(Number(LicensePurchased.args["durationInDays"])).to.be.equal(days)
       expect(Number(LicensePurchased.args["price"])).to.be.equal(price)
       expect(LicensePurchased.args["sender"]).to.be.equal(collectorC.address)
+      expect(Number(LicensePurchased.args["timestamp"])).to.be.equal(timestamp)
 
       // Check balances.
       const artistBalanceAfter = ethers.utils.formatEther(

@@ -28,7 +28,8 @@ contract DigitalArt is ERC721URIStorage {
         uint256 tokenId,
         address oldOwner,
         address newOwner,
-        uint256 price
+        uint256 price,
+        uint256 timestamp
     );
 
     event PaymentExecuted(address payable to, uint256 amount);
@@ -38,7 +39,8 @@ contract DigitalArt is ERC721URIStorage {
         uint256 durationInDays,
         uint256 price,
         uint256 endDateInMillis,
-        address payable sender
+        address payable sender,
+        uint256 timestamp
     );
 
     event SellingPriceUpdated(
@@ -158,8 +160,9 @@ contract DigitalArt is ERC721URIStorage {
      * @notice A safe method for purchasing an NFT on sale.
      * @dev Stores on-chain the URI for the token metadata.
      * @param _tokenId <uint256> - NFT unique identifier.
+     * @param _timestamp <uint256> - Date and time when the tx is sent to the network.
      */
-    function purchaseNFT(uint256 _tokenId) external payable {
+    function purchaseNFT(uint256 _tokenId, uint256 _timestamp) external payable {
         NFT memory nft = idToNFT[_tokenId];
         require(
             _tokenId <= _tokenIds.current() && nft.id == _tokenId,
@@ -179,7 +182,7 @@ contract DigitalArt is ERC721URIStorage {
         require(_ownerToIds[nft.owner].remove(nft.id), "NOT-REMOVED-ID");
 
         // Emit event.
-        emit TokenPurchased(_tokenId, nft.owner, msg.sender, msg.value);
+        emit TokenPurchased(_tokenId, nft.owner, msg.sender, msg.value, _timestamp);
 
         // Token ownership transfer.
         this.safeTransferFrom(nft.owner, msg.sender, nft.id);
@@ -199,8 +202,9 @@ contract DigitalArt is ERC721URIStorage {
      * @notice A method for purchasing a license of time-based usage for a licensable NFT.
      * @param _tokenId <uint256> - NFT unique identifier.
      * @param _days <uint256> - Duration (in days) of the time-based license usage.
+     * @param _timestamp <uint256> - Date and time when the tx is sent to the network.
      */
-    function purchaseLicense(uint256 _tokenId, uint256 _days) external payable {
+    function purchaseLicense(uint256 _tokenId, uint256 _days, uint256 _timestamp) external payable {
         NFT memory nft = idToNFT[_tokenId];
         require(
             _tokenId <= _tokenIds.current() && nft.id == _tokenId,
@@ -212,7 +216,7 @@ contract DigitalArt is ERC721URIStorage {
         require(nft.dailyLicensePrice * _days <= msg.value, "INVALID-PAYMENT");
 
         // Check if the sender has already a valid license on the provided NFT.
-        checkLicenseValidityForLicensee(msg.sender, _tokenId);
+        checkLicenseValidityForLicensee(msg.sender, _tokenId, _timestamp);
 
         // Royalty redistribution.
         uint256 artistAmount = ((nft.dailyLicensePrice * _days) / 100) *
@@ -227,8 +231,8 @@ contract DigitalArt is ERC721URIStorage {
         uint256 daysInMillis = _days * 86400000;
         License memory license = License(
             _tokenId,
-            block.timestamp * 1000,
-            (block.timestamp * 1000) + daysInMillis,
+            _timestamp,
+            _timestamp + daysInMillis,
             msg.value,
             msg.sender
         );
@@ -240,8 +244,9 @@ contract DigitalArt is ERC721URIStorage {
             _tokenId,
             _days,
             msg.value,
-            (block.timestamp * 1000) + daysInMillis,
-            payable(msg.sender)
+            _timestamp + daysInMillis,
+            payable(msg.sender),
+            _timestamp
         );
     }
 
@@ -299,10 +304,10 @@ contract DigitalArt is ERC721URIStorage {
         require(nft.owner == msg.sender, "NOT-OWNER");
         require(
             (nft.dailyLicensePrice == 0 && _newDailyLicensePrice > 0) ||
-                (nft.dailyLicensePrice > 0 && _newDailyLicensePrice == 0),
+                (nft.dailyLicensePrice > 0 && _newDailyLicensePrice >= 0),
             "INVALID-LICENSABLE-UPDATE"
         );
-
+        
         // Emit event.
         emit DailyLicensePriceUpdated(
             _tokenId,
@@ -385,10 +390,12 @@ contract DigitalArt is ERC721URIStorage {
      * @notice Check if the licensee has already a valid license on the provided NFT.
      * @param _licensee <address> - Who bought the license.
      * @param _tokenId <uint256> - NFT unique identifier.
+     * @param _timestamp <uint256> - Current date and time.
      */
     function checkLicenseValidityForLicensee(
         address _licensee,
-        uint256 _tokenId
+        uint256 _tokenId,
+        uint256 _timestamp
     ) internal view {
         License[] memory licensesOnToken = this.getAllLicensesForToken(
             _tokenId
@@ -396,7 +403,7 @@ contract DigitalArt is ERC721URIStorage {
         for (uint256 i = 0; i < licensesOnToken.length; i++)
             require(
                 (licensesOnToken[i].recipient == _licensee &&
-                    licensesOnToken[i].end < block.timestamp) ||
+                    licensesOnToken[i].end < _timestamp) ||
                     (licensesOnToken[i].recipient != _licensee),
                 "ALREADY-LICENSED"
             );
