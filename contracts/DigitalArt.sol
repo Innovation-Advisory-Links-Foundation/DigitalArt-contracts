@@ -3,17 +3,16 @@
 pragma solidity >=0.7.6 <0.9.0;
 
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
-import "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title DigitalArt
  * @author Giacomo Corrias (@Jeeiii) - LINKS Foundation x OTB
  * @dev NFT marketplace w/ royalty redistribution and time-based purchases (licenses) for NFTs.
  */
-contract DigitalArt is ERC721URIStorage {
+contract DigitalArt is ERC721URIStorage, Ownable {
     using Counters for Counters.Counter;
-    using EnumerableSet for EnumerableSet.UintSet;
 
     /** EVENTS */
     event TokenMinted(
@@ -31,8 +30,6 @@ contract DigitalArt is ERC721URIStorage {
         uint256 price,
         uint256 timestamp
     );
-
-    event PaymentExecuted(address payable to, uint256 amount);
 
     event LicensePurchased(
         uint256 tokenId,
@@ -54,6 +51,10 @@ contract DigitalArt is ERC721URIStorage {
         uint256 oldDailyLicensePrice,
         uint256 newDailyLicensePrice
     );
+
+    event PaymentExecuted(address payable to, uint256 amount);
+
+    event InfringmentAttemptsRecorded(uint256 tokenId, uint256 timestamp, bytes32 infringmentAttemptsHash);
 
     /** CUSTOM TYPES */
 
@@ -81,9 +82,6 @@ contract DigitalArt is ERC721URIStorage {
     ///@dev Percentage of value redistribution for each license associated to the NFT.
     uint256 public artistLicenseRoyalty = 3;
 
-    ///@dev Return the licenses belonging to the corresponding NFT.
-    mapping(uint256 => License[]) public idToLicenses;
-
     ///@dev Return the NFT having the provided identifier.
     mapping(uint256 => NFT) public idToNFT;
 
@@ -93,15 +91,12 @@ contract DigitalArt is ERC721URIStorage {
     ///@dev Return the token id (NFT) associated to the corresponding IPFS URI.
     mapping(string => uint256) private _uriToId;
 
-    ///@dev Return the token ids (NFTs) belonging to the corresponding address.
-    mapping(address => EnumerableSet.UintSet) private _ownerToIds;
-
-    ///@dev Return the licenses belonging to the corresponding address.
-    mapping(address => License[]) private _userToLicenses;
+    ///@dev Return the licenses belonging to the corresponding NFT.
+    mapping(uint256 => License[]) internal _idToLicenses;
 
     /** METHODS */
 
-    constructor() ERC721("DigitalArt", "DAT") {}
+    constructor() ERC721("DigitalArt", "DAT") Ownable() {}
 
     /**
      * @notice A safe method for minting a new NFT.
@@ -138,7 +133,6 @@ contract DigitalArt is ERC721URIStorage {
 
         // Storage update.
         idToNFT[newTokenId] = nft;
-        _ownerToIds[msg.sender].add(newTokenId);
         _uriToId[_tokenURI] = newTokenId;
 
         // Approve DigitalArt contract to move this token.
@@ -162,7 +156,10 @@ contract DigitalArt is ERC721URIStorage {
      * @param _tokenId <uint256> - NFT unique identifier.
      * @param _timestamp <uint256> - Date and time when the tx is sent to the network.
      */
-    function purchaseNFT(uint256 _tokenId, uint256 _timestamp) external payable {
+    function purchaseNFT(uint256 _tokenId, uint256 _timestamp)
+        external
+        payable
+    {
         NFT memory nft = idToNFT[_tokenId];
         require(
             _tokenId <= _tokenIds.current() && nft.id == _tokenId,
@@ -177,12 +174,14 @@ contract DigitalArt is ERC721URIStorage {
             artistResellingRoyalty;
         uint256 ownerAmount = nft.sellingPrice - artistAmount;
 
-        // Enumerable UintSet update.
-        require(_ownerToIds[msg.sender].add(nft.id), "DUPLICATE-ID");
-        require(_ownerToIds[nft.owner].remove(nft.id), "NOT-REMOVED-ID");
-
         // Emit event.
-        emit TokenPurchased(_tokenId, nft.owner, msg.sender, msg.value, _timestamp);
+        emit TokenPurchased(
+            _tokenId,
+            nft.owner,
+            msg.sender,
+            msg.value,
+            _timestamp
+        );
 
         // Token ownership transfer.
         this.safeTransferFrom(nft.owner, msg.sender, nft.id);
@@ -204,7 +203,11 @@ contract DigitalArt is ERC721URIStorage {
      * @param _days <uint256> - Duration (in days) of the time-based license usage.
      * @param _timestamp <uint256> - Date and time when the tx is sent to the network.
      */
-    function purchaseLicense(uint256 _tokenId, uint256 _days, uint256 _timestamp) external payable {
+    function purchaseLicense(
+        uint256 _tokenId,
+        uint256 _days,
+        uint256 _timestamp
+    ) external payable {
         NFT memory nft = idToNFT[_tokenId];
         require(
             _tokenId <= _tokenIds.current() && nft.id == _tokenId,
@@ -236,8 +239,7 @@ contract DigitalArt is ERC721URIStorage {
             msg.value,
             msg.sender
         );
-        _userToLicenses[msg.sender].push(license);
-        idToLicenses[_tokenId].push(license);
+        _idToLicenses[_tokenId].push(license);
 
         // Emit event.
         emit LicensePurchased(
@@ -307,7 +309,7 @@ contract DigitalArt is ERC721URIStorage {
                 (nft.dailyLicensePrice > 0 && _newDailyLicensePrice >= 0),
             "INVALID-LICENSABLE-UPDATE"
         );
-        
+
         // Emit event.
         emit DailyLicensePriceUpdated(
             _tokenId,
@@ -318,6 +320,30 @@ contract DigitalArt is ERC721URIStorage {
         // Storage update.
         nft.dailyLicensePrice = _newDailyLicensePrice;
         idToNFT[_tokenId] = nft;
+    }
+
+    /**
+     * @notice Update the IPR infringment attempts for a specific NFT.
+     * @dev The IPR infringment attempts are obtained from a Google API (Web Detection) and the hash is calculated from the client perspective.
+     * @param _tokenId <uint256> - NFT unique identifier.
+     * @param _timestamp <uint256> - Date and time when the IPR infringement attempts are detected.
+     * @param _infringmentAttemptsHash <string> - The hash of the file where the infringement attempts are listed.
+     */
+    function recordIPRInfringementAttempts(
+        uint256 _tokenId,
+        uint256 _timestamp,
+        bytes32 _infringmentAttemptsHash
+    ) external onlyOwner() {
+        NFT memory nft = idToNFT[_tokenId];
+        require(
+            _tokenId <= _tokenIds.current() && nft.id == _tokenId,
+            "INVALID-TOKEN-ID"
+        );    
+
+        require(_infringmentAttemptsHash != "", "INVALID-DATA-HASH");
+
+        // Emit event.
+        emit InfringmentAttemptsRecorded(_tokenId, _timestamp, _infringmentAttemptsHash);
     }
 
     /**
@@ -334,46 +360,6 @@ contract DigitalArt is ERC721URIStorage {
     }
 
     /**
-     * @notice Return the number of NFTs owned by the address.
-     * @param _owner <address> - Address of the NFTs owner.
-     * @return _total <uint256[]> - Number of the NFTs owned by the address.
-     */
-    function getNumberOfTokensForOwner(address _owner)
-        external
-        view
-        returns (uint256 _total)
-    {
-        return _ownerToIds[_owner].length();
-    }
-
-    /**
-     * @notice Return the NFT identifier owned by the address which is stored at a given index.
-     * @param _owner <address> - Address of the NFTs owner.
-     * @param _idx <uint256> - Index where to lookup the value.
-     * @return _id <uint256> - NFT unique identifier stored at the given index location.
-     */
-    function getIdFromIndexForOwner(address _owner, uint256 _idx)
-        external
-        view
-        returns (uint256 _id)
-    {
-        return _ownerToIds[_owner].at(_idx);
-    }
-
-    /**
-     * @notice Return the licenses owned by the address.
-     * @param _licensee <address> - Who bought the license.
-     * @return _licenses <License[]> - Unique identifiers of the licenses owned by the address.
-     */
-    function getAllLicensesForLicensee(address _licensee)
-        external
-        view
-        returns (License[] memory _licenses)
-    {
-        return _userToLicenses[_licensee];
-    }
-
-    /**
      * @notice Return the licenses owned by the address.
      * @param _tokenId <uint256> - NFT unique identifier.
      * @return _licenses <License[]> - Licenses on the given NFT.
@@ -383,7 +369,7 @@ contract DigitalArt is ERC721URIStorage {
         view
         returns (License[] memory _licenses)
     {
-        return idToLicenses[_tokenId];
+        return _idToLicenses[_tokenId];
     }
 
     /**

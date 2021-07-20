@@ -2,14 +2,16 @@ import { Signer } from "@ethersproject/abstract-signer"
 import { Contract, ContractFactory } from "@ethersproject/contracts"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import { expect } from "chai"
-import { BigNumber } from "ethers"
+import { BigNumber, utils } from "ethers"
 import { ethers } from "hardhat"
+import crypto from "crypto"
 
 // Digital Art Smart Contract unit tests.
 describe("*** DigitalArt ***", () => {
   let DigitalArt: ContractFactory // Contract factory for istantiating new DigitalArt smart contract istances.
   let digitalArtIstance: Contract // DigitalArt smart contract istance.
   let signers: Array<SignerWithAddress> // Users accounts.
+  let marketplaceOwner: SignerWithAddress
   let artist: SignerWithAddress
   let collectorA: SignerWithAddress
   let collectorB: SignerWithAddress
@@ -24,10 +26,11 @@ describe("*** DigitalArt ***", () => {
 
     // Get users (signers) accounts.
     signers = await ethers.getSigners()
-    artist = signers[0]
-    collectorA = signers[1]
-    collectorB = signers[2]
-    collectorC = signers[3]
+    marketplaceOwner = signers[0]
+    artist = signers[1]
+    collectorA = signers[2]
+    collectorB = signers[3]
+    collectorC = signers[4]
   })
 
   describe("# NFT Minting", () => {
@@ -104,12 +107,6 @@ describe("*** DigitalArt ***", () => {
       expect(await digitalArtIstance.ownerOf(expectedTokenId)).to.be.equal(
         artist.address
       )
-      expect(
-        await digitalArtIstance.getNumberOfTokensForOwner(artist.address)
-      ).to.be.equal(Transfer.args.tokenId)
-      expect(
-        await digitalArtIstance.getIdFromIndexForOwner(artist.address, 0)
-      ).to.be.equal(Transfer.args.tokenId)
       expect(
         await digitalArtIstance.tokenURI(Transfer.args.tokenId)
       ).to.be.equal(tokenURI)
@@ -235,15 +232,6 @@ describe("*** DigitalArt ***", () => {
       expect(await digitalArtIstance.ownerOf(tokenId)).to.be.equal(
         collectorA.address
       )
-      expect(
-        await digitalArtIstance.getNumberOfTokensForOwner(artist.address)
-      ).to.be.equal(0)
-      expect(
-        await digitalArtIstance.getNumberOfTokensForOwner(collectorA.address)
-      ).to.be.equal(1)
-      expect(
-        await digitalArtIstance.getIdFromIndexForOwner(collectorA.address, 0)
-      ).to.be.equal(tokenId)
     })
 
     it("Should not be possible to purchase a NFT if the NFT is not on sale", async () => {
@@ -473,10 +461,6 @@ describe("*** DigitalArt ***", () => {
       expect(
         (await digitalArtIstance.getAllLicensesForToken(tokenId)).length
       ).to.be.equal(1)
-      expect(
-        (await digitalArtIstance.getAllLicensesForLicensee(collectorC.address))
-          .length
-      ).to.be.equal(1)
     })
 
     it("Should not be possible to buy a license if the licensee has already a valid license for the NFT", async () => {
@@ -486,6 +470,91 @@ describe("*** DigitalArt ***", () => {
         .purchaseLicense(tokenId, days, { value: price })
 
       await expect(tx).to.be.reverted
+    })
+  })
+
+  describe("# IPR Infringment", () => {
+    const tokenId = 1
+    const timestamp = Date.now()
+    const sampleInfringmentReportList = JSON.stringify([
+      {
+        url: "https://todo/todo",
+        score: 0
+      },
+      {
+        url: "https://example",
+        score: 0
+      }
+    ])
+    const infringmentAttemptsHash = `0x${crypto
+      .createHash("sha256")
+      .update(sampleInfringmentReportList)
+      .digest("hex")}`
+
+    it("Should not be possible to record IPR infringment attempts for a non minted token", async () => {
+      // Send tx.
+      const tx = digitalArtIstance
+        .connect(collectorC)
+        .recordIPRInfringementAttempts(100, timestamp, infringmentAttemptsHash)
+
+      await expect(tx).to.be.reverted
+    })
+
+    it("Should not be possible to record IPR infringment attempts if the sender is not the marketplace (contract) owner", async () => {
+      // Send tx.
+      const tx = digitalArtIstance
+        .connect(collectorB)
+        .recordIPRInfringementAttempts(
+          tokenId,
+          timestamp,
+          infringmentAttemptsHash
+        )
+
+      await expect(tx).to.be.reverted
+    })
+
+    it("Should not be possible to record IPR infringment attempts if the marketplace owner provides an empty hash value", async () => {
+      // Send tx.
+      const tx = digitalArtIstance
+        .connect(marketplaceOwner)
+        .recordIPRInfringementAttempts(
+          tokenId,
+          timestamp,
+          ethers.constants.HashZero
+        )
+
+      await expect(tx).to.be.reverted
+    })
+
+    it("Should be possible to record IPR infringment attempts for a NFT", async () => {
+      // Send tx.
+      const tx = await digitalArtIstance
+        .connect(marketplaceOwner)
+        .recordIPRInfringementAttempts(
+          tokenId,
+          timestamp,
+          infringmentAttemptsHash
+        )
+
+      // Wait until the tx is mined to get back the events.
+      const { events } = await tx.wait()
+      const [InfringmentAttemptsRecorded] = events
+
+      // InfringmentAttemptsRecorded.
+      expect(Number(InfringmentAttemptsRecorded.args["tokenId"])).to.be.equal(
+        tokenId
+      )
+      expect(Number(InfringmentAttemptsRecorded.args["timestamp"])).to.be.equal(
+        timestamp
+      )
+      expect(
+        InfringmentAttemptsRecorded.args["infringmentAttemptsHash"]
+      ).to.be.equal(infringmentAttemptsHash)
+
+      // Methods checks.
+      expect(
+        (await digitalArtIstance.getAllLicensesForToken(tokenId)).length
+      ).to.be.equal(1)
     })
   })
 })
