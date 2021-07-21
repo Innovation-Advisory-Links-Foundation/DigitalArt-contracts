@@ -7,3 +7,6 @@ node_modules
 cache
 artifacts
 .eslintcache
+.env
+server/secret/
+dist/

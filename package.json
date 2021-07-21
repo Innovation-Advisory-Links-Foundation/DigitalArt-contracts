@@ -2,6 +2,7 @@
   "name": "digitalart-contracts",
   "version": "0.1.0",
   "description": "A multi authorship NFT marketplace w/ royalty redistribution and IPR management",
+  "type": "commonjs",
   "keywords": [
     "nft",
     "blockchain",
@@ -21,13 +22,14 @@
     "README.md"
   ],
   "scripts": {
-    "start": "hardhat node",
+    "start-node": "hardhat node",
     "compile": "hardhat compile",
     "clean": "hardhat clean",
     "test": "hardhat test",
     "flatten": "hardhat flatten",
     "deploy": "hardhat run scripts/digital-art.script.ts --network localhost",
     "lint-contracts": "solhint contracts/**/*.sol",
+    "start-server": "tsc && nodemon dist/index.js",
     "commit": "cz",
     "precommit": "lint-staged"
   },
@@ -96,5 +98,15 @@
       "path": "./node_modules/cz-conventional-changelog"
     }
   },
-  "dependencies": {}
+  "dependencies": {
+    "@google-cloud/vision": "^2.3.7",
+    "@types/cors": "^2.8.12",
+    "@types/express": "^4.17.13",
+    "@types/request": "^2.48.6",
+    "cors": "^2.8.5",
+    "dotenv": "^10.0.0",
+    "esm": "^3.2.25",
+    "express": "^4.17.1",
+    "request": "^2.88.2"
+  }
 }
